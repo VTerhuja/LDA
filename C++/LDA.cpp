@@ -24,15 +24,15 @@ int D = 0;	// Number of documents
 int W = 0;	// Number of words in vocabulary
 
 /* # times word w is assigned to topic k over all the documents */
-int CKW[MAX_K][MAX_WORDS] = { 0 };
+int CWK[MAX_WORDS][MAX_K] = { 0 };
 /* # words assigned to topic k in each document */ 
-int CKD[MAX_K][MAX_DOCS] = { 0 };
+int CDK[MAX_DOCS][MAX_K] = { 0 };
 /* # words in each document */
 int CD[MAX_DOCS] = { 0 };
 /* # words assigned to topic k over all documents */
 int CK[MAX_K] = { 0 };
-/* psi(k,w) matrix */
-double PSI[MAX_K][MAX_WORDS] = { 0 };
+/* psi(w,k) matrix */
+double PSI[MAX_WORDS][MAX_K] = { 0 };
 
 /** Note: Everything is zero indexed unlike Matlab **/
 /* Just a reminder for myself */
@@ -122,7 +122,7 @@ vector<data> ReadDataFile(string fileName)
 	return dataSet;
 }
 
-vector<word> PreprocessData(vector<data> dataSet, int nTopics)
+vector<word> PreprocessData(vector<data> dataSet, int K)
 {
 	vector<word> words;
 	for(int i=0; i<dataSet.size(); i++)
@@ -134,7 +134,7 @@ vector<word> PreprocessData(vector<data> dataSet, int nTopics)
 			/* Zero indexed */
 			tempWord.docId = dataSet[i].docId-1;
 			tempWord.wordId = dataSet[i].wordId-1;
-			tempWord.topicId = rand()%nTopics;
+			tempWord.topicId = rand() % K;
 			words.push_back(tempWord);
 		}
 	}
@@ -157,12 +157,12 @@ int GetDiscreteRandomNumber(vector<double> p)
 	double randVal = ((double) rand() / (RAND_MAX));
 	for(int i=0; i<cumSum.size(); i++)
 	{
-		if(cumSum[i] > randVal)
+		if(cumSum[i] >= randVal)
 		{
 			return i;
 		}
 	}
-	return 0;
+	return p.size()-1;
 }
 
 void NormalizeDistribution(vector<double> &p)
@@ -185,93 +185,70 @@ void CountWordsPerTopicinAllDocs(vector<word> words, int nTopics)
 	for(int i=0; i<words.size(); i++)
 	{
 		int wId = words[i].wordId;
-		int tId = words[i].topicId;
+		int kId = words[i].topicId;
 		int dId = words[i].docId;
-		CKW[tId][wId]++;
-		CKD[tId][dId]++;
+		CWK[wId][kId]++;
+		CDK[dId][kId]++;
 		CD[dId]++;
-		CK[tId]++;
+		CK[kId]++;
 	}
-}
-
-int SumColumn(int row)
-{
-	int total = 0;
-	for(int i=0; i<W; i++)
-	{
-		total += CKW[row][i];
-	}
-	return total;
 }
 
 void NormalizeRow(int k, int sumk)
 {
 	for(int i=0; i<W; i++)
 	{
-		PSI[k][i] = (double)(CKW[k][i] + 1)/sumk;	
+		PSI[i][k] = (double)(CWK[i][k] + 1)/sumk;	
 	}
 }
 
-typedef std::pair<double,int> mypair;
-bool comparator ( const mypair& l, const mypair& r)
+typedef std::pair<double,int> wpPair;
+bool comparator ( const wpPair& l, const wpPair& r)
    { return l.first < r.first; }
 
 int main( int argc, char** argv )
 {
-	vector<mypair> a;
-	for(int i=0;i<5;i++)
-	{
-		mypair temp;
-		temp.first = rand()%5;
-		temp.second = i;
-		a.push_back(temp);
-	}
-
-	std::sort(a.rbegin(),a.rend(),comparator);
-
-	int nTopics = 10;
-	cout<<"\nTOPICS: "<<nTopics<<endl;
+	int K = 2;
+	cout<<"\nTOPICS: "<<K<<endl;
 	cout<<"Reading dataset and vocabulary..."<<endl;
-	vector<string> vocab = ReadVocabulary("vocab.kos.txt");
-	vector<data> dataSet = ReadDataFile("docword.kos.txt");
-	vector<word> words = PreprocessData(dataSet, nTopics);
+	vector<string> vocab = ReadVocabulary("vocab.nips.txt");
+	vector<data> dataSet = ReadDataFile("docword.nips.txt");
+	vector<word> words = PreprocessData(dataSet, K);
 	totalWords = words.size();
 
-	CountWordsPerTopicinAllDocs(words, nTopics);
+	CountWordsPerTopicinAllDocs(words, K);
 
 	double start = omp_get_wtime();
 	int trials = 100;
 	for(int t=0; t<trials; t++)
 	{
 		cout<<"\nIteration: "<<t+1;
-		for(int i =0; i<words.size(); i++)
+		for(int i=0; i<words.size(); i++)
 		{
 			int dId = words[i].docId;
 			int wId = words[i].wordId;
 			int kId = words[i].topicId;			
-			int K = nTopics;
 
 			vector<double> p;
-			for(int k=0; k<nTopics; k++)
+			for(int k=0; k<K; k++)
 			{
-				int fVal = CKW[k][wId];
-				if(fVal > 0)
-				{
-					fVal -= 1;
-				}
+				/* # of times word w is assigned to topic k not including the current word */
+				int fVal = CWK[wId][k];
+				if(fVal > 0)	fVal--;
 
-				int sVal = CKD[k][dId];
-				if(sVal > 0)
-				{
-					sVal -= 1;
-				}
+				/* # of words in document dId assigned to topic k not including the current word */
+				int sVal = CDK[dId][k];
+				if(sVal > 0)	sVal--;
 
-				/* Sum: # words assigned to topic k => Sum all the columns of the kth row */
-				int sumkwCol = CK[k] + W;
+				/* # of words assigned to topic k not including current word */
+				int sumkwCol = CK[k] - 1 + W;
 				/* Sum: # words in document d => Sum all the rows of the dth column */
-				int sumkdCol = CD[dId] + K;
+				int sumkdCol = CD[dId] - 1 + K;
+				/* first: P(W(n,d) | Z(n,d) = k, Z(-n,d), W(-n,d)) */
 				double first = (double)(fVal + 1) / (sumkwCol);
+				/* second: P(Z(n,d) = k | Z(-n,d), alpha) */
 				double second = (double)(sVal + 1) / (sumkdCol);
+				/* first * second: P(Z(n,d) = k | Z(-n,d), W(.,d), alpha, beta) */
 				p.push_back(first * second);
 			}
 
@@ -282,15 +259,16 @@ int main( int argc, char** argv )
 			/* Assign new topic to current word */
 			words[i].topicId = newk;
 			/* Reduce the count from topic-word count matrix */
-			CKW[kId][wId]--;
+			CWK[wId][kId]--;
 			/* Increase the count in topic-word count matrix */
-			CKW[newk][wId]++;
+			CWK[wId][newk]++;
 			/* Reduce the count from topic-document count matrix */
-			CKD[kId][dId]--;
+			CDK[dId][kId]--;
 			/* Increase the count in topic-document count matrix */
-			CKD[newk][dId]++; 
+			CDK[dId][newk]++; 
 			/* Reduce count in old k */
 			CK[kId]--;
+			/* Increase count in new k */
 			CK[newk]++;
 		}
 	}
@@ -299,19 +277,18 @@ int main( int argc, char** argv )
 	cout<<"\nTime elapsed"<<" :"<<end - start;
 
 	ofstream outputFile;
-	outputFile.open("kos_result_k_2.txt");
+	outputFile.open("nips_result_2_test.txt");
 	cout<<"\nCompute psi(w,k) ..."<<endl;
-	for(int k=0; k<nTopics; k++)
+	for(int k=0; k<K; k++)
 	{
-		vector<mypair> p;
-		int sumRow = SumColumn(k) + W;
-		NormalizeRow(k, sumRow);
+		vector<wpPair> p;	
+		NormalizeRow(k, CK[k] + W);
 
 		/* Create index and probability pair */
 		for(int i=0; i<W; i++)
 		{
-			mypair temp;
-			temp.first = PSI[k][i];
+			wpPair temp;
+			temp.first = PSI[i][k];
 			temp.second = i;
 			p.push_back(temp);
 		}
