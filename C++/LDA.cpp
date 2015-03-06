@@ -16,8 +16,8 @@ const char SPACE_SYMBOL = ' ';
 const char HASH_SYMBOL = '#';
 
 #define MAX_K 10
-#define MAX_DOCS 10000
-#define MAX_WORDS 200000
+#define MAX_DOCS 1500
+#define MAX_WORDS 20000
 
 /* Global Variables */
 int D = 0;	// Number of documents
@@ -25,10 +25,10 @@ int W = 0;	// Number of words in vocabulary
 
 /* # times word w is assigned to topic k over all the documents */
 int CWK[MAX_WORDS][MAX_K] = { 0 };
-/* # words assigned to topic k in each document */ 
-int CDK[MAX_DOCS][MAX_K] = { 0 };
-/* # words in each document */
-int CD[MAX_DOCS] = { 0 };
+/* # times word w is assigned to topic k in each document */ 
+int CWDK[MAX_WORDS][MAX_DOCS][MAX_K] = { 0 };
+/* # word w in each document */
+int CWD[MAX_WORDS][MAX_DOCS] = { 0 };
 /* # words assigned to topic k over all documents */
 int CK[MAX_K] = { 0 };
 /* psi(w,k) matrix */
@@ -188,8 +188,8 @@ void CountWordsPerTopicinAllDocs(vector<word> words, int nTopics)
 		int kId = words[i].topicId;
 		int dId = words[i].docId;
 		CWK[wId][kId]++;
-		CDK[dId][kId]++;
-		CD[dId]++;
+		CWDK[wId][dId][kId]++;
+		CWD[wId][dId]++;
 		CK[kId]++;
 	}
 }
@@ -208,7 +208,7 @@ bool comparator ( const wpPair& l, const wpPair& r)
 
 int main( int argc, char** argv )
 {
-	int K = 2;
+	int K = 5;
 	cout<<"\nTOPICS: "<<K<<endl;
 	cout<<"Reading dataset and vocabulary..."<<endl;
 	vector<string> vocab = ReadVocabulary("vocab.nips.txt");
@@ -219,7 +219,7 @@ int main( int argc, char** argv )
 	CountWordsPerTopicinAllDocs(words, K);
 
 	double start = omp_get_wtime();
-	int trials = 100;
+	int trials = 500;
 	for(int t=0; t<trials; t++)
 	{
 		cout<<"\nIteration: "<<t+1;
@@ -236,20 +236,20 @@ int main( int argc, char** argv )
 				int fVal = CWK[wId][k];
 				if(fVal > 0)	fVal--;
 
-				/* # of words in document dId assigned to topic k not including the current word */
-				int sVal = CDK[dId][k];
+				/* # of times word w in document dId is assigned to topic k not including the current word */
+				int sVal = CWDK[wId][dId][k];
 				if(sVal > 0)	sVal--;
 
 				/* # of words assigned to topic k not including current word */
-				int sumkwCol = CK[k] - 1 + W;
-				/* Sum: # words in document d => Sum all the rows of the dth column */
-				int sumkdCol = CD[dId] - 1 + K;
-				/* first: P(W(n,d) | Z(n,d) = k, Z(-n,d), W(-n,d)) */
-				double first = (double)(fVal + 1) / (sumkwCol);
-				/* second: P(Z(n,d) = k | Z(-n,d), alpha) */
-				double second = (double)(sVal + 1) / (sumkdCol);
-				/* first * second: P(Z(n,d) = k | Z(-n,d), W(.,d), alpha, beta) */
-				p.push_back(first * second);
+				int sumF = CK[k] - 1 + W;
+				/* Sum: # word w in document d */
+				int sumS = CWD[wId][dId] - 1 + K;
+				/* fTerm: P(W(n,d) | Z(n,d) = k, Z(-n,d), W(-n,d)) */
+				double fTerm = (double)(fVal + 1) / (sumF);
+				/* sTerm: P(Z(n,d) = k | Z(-n,d), alpha) */
+				double sTerm = (double)(sVal + 1) / (sumS);
+				/* first * second: P(Z(n,d) = k | Z(-n,d) * W(.,d), alpha, beta) */
+				p.push_back(fTerm * sTerm);
 			}
 
 			/* Normalize the distribution */
@@ -258,14 +258,14 @@ int main( int argc, char** argv )
 			int newk = GetDiscreteRandomNumber(p);
 			/* Assign new topic to current word */
 			words[i].topicId = newk;
-			/* Reduce the count from topic-word count matrix */
+			/* Reduce the count for kId topic from word-topic count matrix */
 			CWK[wId][kId]--;
-			/* Increase the count in topic-word count matrix */
+			/* Increase the count for newK topic in word-topic count matrix */
 			CWK[wId][newk]++;
-			/* Reduce the count from topic-document count matrix */
-			CDK[dId][kId]--;
-			/* Increase the count in topic-document count matrix */
-			CDK[dId][newk]++; 
+			/* Reduce the count for kId topic from word-document-topic count matrix */
+			CWDK[wId][dId][kId]--;
+			/* Increase the count for newK topic from word-document-topic count matrix */
+			CWDK[wId][dId][newk]++; 
 			/* Reduce count in old k */
 			CK[kId]--;
 			/* Increase count in new k */
@@ -277,7 +277,7 @@ int main( int argc, char** argv )
 	cout<<"\nTime elapsed"<<" :"<<end - start;
 
 	ofstream outputFile;
-	outputFile.open("nips_result_2_test.txt");
+	outputFile.open("nips_result_5_500.txt");
 	cout<<"\nCompute psi(w,k) ..."<<endl;
 	for(int k=0; k<K; k++)
 	{
@@ -298,11 +298,11 @@ int main( int argc, char** argv )
 		cout<<"\nTopic: #"<<k+1<<endl;
 		outputFile<<"\nTopic: #"<<k+1<<endl;
 
+		/* Output top 10 words in each topic */
 		for(int i=0; i<10; i++)
 		{
-			int idx = p[i].second;
-			cout<<vocab[idx]<<" "<<p[i].first<<endl;
-			outputFile<<vocab[idx]<<" "<<p[i].first<<"\n";
+			cout<<vocab[p[i].second]<<" "<<p[i].first<<endl;
+			outputFile<<vocab[p[i].second]<<" "<<p[i].first<<"\n";
 		}
 	}
 	cout<<"\nComplete!!"<<endl;
