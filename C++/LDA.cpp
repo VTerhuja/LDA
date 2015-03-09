@@ -16,8 +16,8 @@ const char SPACE_SYMBOL = ' ';
 const char HASH_SYMBOL = '#';
 
 #define MAX_K 10
-#define MAX_DOCS 1500
-#define MAX_WORDS 20000
+#define MAX_DOCS 4000		//1500
+#define MAX_WORDS 7000		//13000
 
 /* Global Variables */
 int D = 0;	// Number of documents
@@ -208,18 +208,18 @@ bool comparator ( const wpPair& l, const wpPair& r)
 
 int main( int argc, char** argv )
 {
-	int K = 5;
+	int K = 2;
 	cout<<"\nTOPICS: "<<K<<endl;
 	cout<<"Reading dataset and vocabulary..."<<endl;
-	vector<string> vocab = ReadVocabulary("vocab.nips.txt");
-	vector<data> dataSet = ReadDataFile("docword.nips.txt");
+	vector<string> vocab = ReadVocabulary("vocab.kos.txt");
+	vector<data> dataSet = ReadDataFile("docword.kos.txt");
 	vector<word> words = PreprocessData(dataSet, K);
 	totalWords = words.size();
 
 	CountWordsPerTopicinAllDocs(words, K);
 
 	double start = omp_get_wtime();
-	int trials = 500;
+	int trials = 50;
 	for(int t=0; t<trials; t++)
 	{
 		cout<<"\nIteration: "<<t+1;
@@ -234,11 +234,11 @@ int main( int argc, char** argv )
 			{
 				/* # of times word w is assigned to topic k not including the current word */
 				int fVal = CWK[wId][k];
-				if(fVal > 0)	fVal--;
+				if(fVal > 0 && k == kId)	fVal--;
 
 				/* # of times word w in document dId is assigned to topic k not including the current word */
 				int sVal = CWDK[wId][dId][k];
-				if(sVal > 0)	sVal--;
+				if(sVal > 0 && k == kId)	sVal--;
 
 				/* # of words assigned to topic k not including current word */
 				int sumF = CK[k] - 1 + W;
@@ -272,12 +272,12 @@ int main( int argc, char** argv )
 			CK[newk]++;
 		}
 	}
-	cout<<"\nTrial Complete"<<endl;
+	cout<<"\nBurn-in Complete"<<endl;
 	double end = omp_get_wtime();
 	cout<<"\nTime elapsed"<<" :"<<end - start;
 
 	ofstream outputFile;
-	outputFile.open("nips_result_5_500.txt");
+	outputFile.open("kos_result_2_100.txt");
 	cout<<"\nCompute psi(w,k) ..."<<endl;
 	for(int k=0; k<K; k++)
 	{
