@@ -234,16 +234,25 @@ int main( int argc, char** argv )
 			{
 				/* # of times word w is assigned to topic k not including the current word */
 				int fVal = CWK[wId][k];
-				if(fVal > 0 && k == kId)	fVal--;
 
 				/* # of times word w in document dId is assigned to topic k not including the current word */
 				int sVal = CWDK[wId][dId][k];
-				if(sVal > 0 && k == kId)	sVal--;
 
 				/* # of words assigned to topic k not including current word */
-				int sumF = CK[k] - 1 + W;
+				int sumF = CK[k] + W;
+				
 				/* Sum: # word w in document d */
-				int sumS = CWD[wId][dId] - 1 + K;
+				int sumS = CWD[wId][dId] + K;
+
+				/* Excluding current word */
+				if(k == kId)
+				{
+					if(fVal)	fVal--;
+					if(sVal)	sVal--;
+					sumF--;
+					sumS--;
+				}
+
 				/* fTerm: P(W(n,d) | Z(n,d) = k, Z(-n,d), W(-n,d)) */
 				double fTerm = (double)(fVal + 1) / (sumF);
 				/* sTerm: P(Z(n,d) = k | Z(-n,d), alpha) */
